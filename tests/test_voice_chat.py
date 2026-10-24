@@ -39,7 +39,7 @@ class VoiceChatTests(unittest.IsolatedAsyncioTestCase):
             stdin=SimpleNamespace(write=unittest.mock.Mock(), drain=AsyncMock(), close=unittest.mock.Mock()),
             returncode=0, wait=AsyncMock(),
         )
-        with patch("scripts.voice_chat.AuraTTSClient", return_value=TTS()), patch(
+        with self.assertLogs("hearthvoice.voice", level="INFO") as logs, patch("scripts.voice_chat.AuraTTSClient", return_value=TTS()), patch(
             "scripts.voice_chat.asyncio.create_subprocess_exec", AsyncMock(return_value=player)
         ) as spawn:
             result = await speak_reply(Agent(), [], {}, "key", "aura-2-thalia-en")
@@ -50,8 +50,14 @@ class VoiceChatTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, "Hello. How are you?")
         self.assertEqual(spoken, ["Hello.", "How are you?"])
         self.assertEqual([call.args[0] for call in player.stdin.write.call_args_list],
-                         [bytes(9600), b"\x01\x02", b"\x03\x04"])
+                         [bytes(36000), b"\x01\x02", b"\x03\x04"])
         player.stdin.close.assert_called_once()
+        output = "\n".join(logs.output)
+        self.assertIn("agent SUCCESS", output)
+        self.assertIn("tts FIRST_AUDIO", output)
+        self.assertIn("tts SUCCESS audio_bytes=4", output)
+        self.assertIn("playback PROCESS_SUCCESS", output)
+        self.assertNotIn("How are you?", output)
 
     async def test_stop_process_kills_if_termination_times_out(self):
         process = SimpleNamespace(returncode=None, terminate=unittest.mock.Mock(),
@@ -89,3 +95,18 @@ class VoiceChatTests(unittest.IsolatedAsyncioTestCase):
                 await conversation(SimpleNamespace(name="Test", input_device="default", voice="aura-2-thalia-en"))
         mic.terminate.assert_called_once()
         agent.client.close.assert_awaited_once()
+
+    async def test_tts_connection_failure_logs_failure_and_stops_player(self):
+        player = SimpleNamespace(returncode=None, terminate=unittest.mock.Mock(), wait=AsyncMock())
+        tts = unittest.mock.MagicMock()
+        tts.__aenter__ = AsyncMock(side_effect=RuntimeError("secret provider detail"))
+        with self.assertLogs("hearthvoice.voice", level="INFO") as logs, patch(
+            "scripts.voice_chat.AuraTTSClient", return_value=tts
+        ), patch("scripts.voice_chat.asyncio.create_subprocess_exec", AsyncMock(return_value=player)):
+            with self.assertRaises(RuntimeError):
+                await speak_reply(None, [], {}, "secret-key", "aura-2-thalia-en")
+        output = "\n".join(logs.output)
+        self.assertIn("reply FAIL error_type=RuntimeError", output)
+        self.assertNotIn("secret", output)
+        self.assertNotIn("PROCESS_SUCCESS", output)
+        player.terminate.assert_called_once()

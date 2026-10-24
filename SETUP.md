@@ -118,6 +118,19 @@ conda activate hearthvoice
 python -m scripts.voice_chat --name Julie
 ```
 
+Watch successes and failures in a separate terminal:
+
+```bash
+tail -f /tmp/hearthvoice-voice.log
+```
+
+Restart the voice CLI after code changes to enable logging. The log appends
+session starts, STT turns, agent completion, TTS first-audio timing and byte
+counts, playback exit status, and audio-tool diagnostics. Conversation text
+and API keys are excluded from application log events. `PROCESS_SUCCESS`
+means the player exited normally; speaker volume and routing need a live
+check. Use `--log-file /path/to/file.log` to choose another location.
+
 Allow microphone access for your terminal in macOS System Settings → Privacy &
 Security → Microphone. Speak, then pause to finish your turn. Audio goes to
 Deepgram Flux, the transcript goes to the local agent, and Aura streams its
