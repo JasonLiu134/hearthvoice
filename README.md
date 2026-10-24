@@ -18,13 +18,13 @@ The goal is to provide companionship and earlier awareness of possible problems 
 
 ## Hackathon scope
 
-| Capability | Intended behavior |
-| --- | --- |
-| Phone calls | Scheduled outbound and user-initiated inbound calls over the public telephone network |
-| Conversation | Warm, concise responses, patient turn-taking, and interruption handling |
-| Triage | Structured assessment of symptoms, meals, medication adherence, mood, and changes from baseline |
-| Alerts | SMS to a designated caregiver for concerning responses or missed calls |
-| History | Profiles, contacts, schedules, call outcomes, transcripts, and assessments |
+| Capability   | Intended behavior                                                                               |
+| ------------ | ----------------------------------------------------------------------------------------------- |
+| Phone calls  | Scheduled outbound and user-initiated inbound calls over the public telephone network           |
+| Conversation | Warm, concise responses, patient turn-taking, and interruption handling                         |
+| Triage       | Structured assessment of symptoms, meals, medication adherence, mood, and changes from baseline |
+| Alerts       | SMS to a designated caregiver for concerning responses or missed calls                          |
+| History      | Profiles, contacts, schedules, call outcomes, transcripts, and assessments                      |
 
 The voice latency target is **under 1.5 seconds per turn**. This is a design target, not a measured result.
 
@@ -68,12 +68,12 @@ The initial rules call for escalation on missed medication, a pain increase of a
 
 ## Four-builder work split
 
-| Builder | Focus | Demo deliverable |
-| --- | --- | --- |
-| 1 | Telephony, audio streaming, speech recognition, and speech synthesis | A phone number that supports a live spoken conversation |
-| 2 | Senior-friendly dialogue and structured triage | A live transcript produces a clear assessment |
-| 3 | Webhooks, scheduled calls, and SMS alerting | A concerning or missed check-in sends an alert |
-| 4 | Supabase schema, demo data, integration, and presentation | Persisted call history and a rehearsed end-to-end demo |
+| Builder | Focus                                                                | Demo deliverable                                        |
+| ------- | -------------------------------------------------------------------- | ------------------------------------------------------- |
+| 1       | Telephony, audio streaming, speech recognition, and speech synthesis | A phone number that supports a live spoken conversation |
+| 2       | Senior-friendly dialogue and structured triage                       | A live transcript produces a clear assessment           |
+| 3       | Webhooks, scheduled calls, and SMS alerting                          | A concerning or missed check-in sends an alert          |
+| 4       | Supabase schema, demo data, integration, and presentation            | Persisted call history and a rehearsed end-to-end demo  |
 
 ## Live demo plan
 
