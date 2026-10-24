@@ -12,3 +12,6 @@ httpx>=0.28,<1
 
 # Twilio call authentication and webhook signature validation
 twilio>=9,<10
+
+# OpenAI-compatible client for local llama-server
+openai>=1,<4
