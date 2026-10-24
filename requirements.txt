@@ -1,5 +1,14 @@
+# API server and configuration
 fastapi>=0.115,<1
 uvicorn[standard]>=0.34,<1
+pydantic>=2.9,<3
+python-dotenv>=1,<2
+
+# Deepgram Flux STT WebSocket transport
 websockets>=15,<17
+
+# Deepgram Aura-2 TTS and Ollama HTTP transport (no provider SDKs required)
 httpx>=0.28,<1
+
+# Twilio call authentication and webhook signature validation
 twilio>=9,<10
