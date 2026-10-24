@@ -2,7 +2,7 @@
 
 The phone integration is in `src/api/server.py` and `src/core/voice_pipeline.py`.
 It uses Twilio bidirectional Media Streams, Deepgram Flux for end-of-turn speech
-recognition, and ElevenLabs Flash v2.5 for streamed speech. The dialogue is a
+recognition, and Deepgram Aura-2 for streamed speech. The dialogue is a
 short scripted demo in `reply_to`; it does not yet perform triage or send alerts.
 
 ## Configure
@@ -42,7 +42,7 @@ number to be verified first.
   groups four usual 20 ms frames into the 80 ms frames recommended for Flux.
 - Flux's `EndOfTurn` event starts a short reply immediately. The end-of-turn
   threshold is `0.8` to avoid cutting off a caller who pauses while speaking.
-- ElevenLabs streams `ulaw_8000` directly back to Twilio. Caller speech cancels
+- Aura-2 streams raw mu-law at 8 kHz directly back to Twilio. Caller speech cancels
   synthesis and sends Twilio a `clear` event to discard buffered playback.
 - Logs record `end_of_turn_to_first_audio_ms` per stream. This is one component
   of perceived turn latency; measure the full call path before claiming the

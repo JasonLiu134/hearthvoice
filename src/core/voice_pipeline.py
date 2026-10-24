@@ -1,4 +1,4 @@
-"""Low-latency Twilio -> Deepgram Flux -> ElevenLabs phone audio bridge."""
+"""Low-latency Twilio -> Deepgram Flux -> Aura-2 phone audio bridge."""
 
 import asyncio
 import base64
@@ -24,8 +24,7 @@ log = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class SpeechConfig:
     deepgram_api_key: str
-    elevenlabs_api_key: str
-    elevenlabs_voice_id: str
+    tts_model: str = "aura-2-thalia-en"
     flux_model: str = "flux-general-en"
 
     @property
@@ -78,13 +77,17 @@ class CallSession:
     async def speak(self, client: httpx.AsyncClient, text: str) -> None:
         if not self.stream_sid:
             return
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{self.config.elevenlabs_voice_id}/stream"
         async with client.stream(
             "POST",
-            url,
-            params={"output_format": "ulaw_8000"},
-            headers={"xi-api-key": self.config.elevenlabs_api_key},
-            json={"text": text, "model_id": "eleven_flash_v2_5"},
+            "https://api.deepgram.com/v1/speak",
+            params={
+                "model": self.config.tts_model,
+                "encoding": "mulaw",
+                "sample_rate": 8000,
+                "container": "none",
+            },
+            headers={"Authorization": f"Token {self.config.deepgram_api_key}"},
+            json={"text": text},
         ) as response:
             response.raise_for_status()
             first_chunk = True

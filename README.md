@@ -38,12 +38,12 @@ Twilio Voice or Vapi
 FastAPI orchestration service
   ├── Speech-to-text: Deepgram Flux (current demo path; Nova-2 in the original brief)
   ├── Dialogue and triage: Claude or OpenAI
-  ├── Text-to-speech: ElevenLabs
+  ├── Text-to-speech: Deepgram Aura-2
   ├── Profiles, schedules, and logs: Supabase/PostgreSQL
   └── Caregiver alerts: Twilio SMS
 ```
 
-The current voice pipeline uses Twilio, FastAPI, Deepgram Flux, and ElevenLabs. Other providers in the source specification remain options, not active integrations. Keep triage output structured so the alerting service can act on it without parsing conversational prose.
+The current voice pipeline uses Twilio, FastAPI, Deepgram Flux, and Deepgram Aura-2. Other providers in the source specification remain options, not active integrations. Keep triage output structured so the alerting service can act on it without parsing conversational prose.
 
 ### Triage contract
 

@@ -4,6 +4,8 @@ import json
 import unittest
 from unittest.mock import AsyncMock, patch
 
+import httpx
+
 from src.core.voice_pipeline import CallSession, SpeechConfig, reply_to
 
 
@@ -34,7 +36,7 @@ class FakeDeepgram:
         return messages()
 
 
-CONFIG = SpeechConfig("deepgram", "eleven", "voice")
+CONFIG = SpeechConfig("deepgram")
 
 
 class FakeTTSResponse:
@@ -56,8 +58,13 @@ class FakeTTSStream:
 class FakeHTTPClient:
     def stream(self, method, url, **kwargs):
         assert method == "POST"
-        assert kwargs["params"] == {"output_format": "ulaw_8000"}
-        assert kwargs["json"]["model_id"] == "eleven_flash_v2_5"
+        assert url == "https://api.deepgram.com/v1/speak"
+        assert kwargs["params"] == {
+            "model": "aura-2-thalia-en", "encoding": "mulaw",
+            "sample_rate": 8000, "container": "none",
+        }
+        assert kwargs["headers"] == {"Authorization": "Token deepgram"}
+        assert kwargs["json"] == {"text": "Hello"}
         return FakeTTSStream()
 
 
@@ -104,6 +111,18 @@ class VoicePipelineTests(unittest.IsolatedAsyncioTestCase):
             "event": "media", "streamSid": "MZ1",
             "media": {"payload": base64.b64encode(b"\xff" * 320).decode()},
         }])
+
+    async def test_tts_failure_does_not_forward_error_body_as_audio(self):
+        twilio = FakeTwilio()
+        session = CallSession(twilio, CONFIG)
+        session.stream_sid = "MZ1"
+        transport = httpx.MockTransport(lambda request: httpx.Response(
+            401, json={"err_msg": "Invalid credentials"},
+        ))
+        async with httpx.AsyncClient(transport=transport) as client:
+            with self.assertRaises(httpx.HTTPStatusError):
+                await session.speak(client, "Hello")
+        self.assertEqual(twilio.sent, [])
 
     def test_short_scripted_replies(self):
         self.assertIn("eaten", reply_to("fine", 0))

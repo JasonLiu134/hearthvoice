@@ -75,8 +75,7 @@ async def media_stream(websocket: WebSocket) -> None:
         return
     config = SpeechConfig(
         require_setting("DEEPGRAM_API_KEY"),
-        require_setting("ELEVENLABS_API_KEY"),
-        require_setting("ELEVENLABS_VOICE_ID"),
+        tts_model=os.environ.get("DEEPGRAM_TTS_MODEL", "aura-2-thalia-en"),
     )
     await websocket.accept()
     try:
