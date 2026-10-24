@@ -6,6 +6,9 @@ HearthVoice is a screen-free daily wellness check-in for older adults. It calls 
 
 > **Project status:** The repository has a file scaffold and a tested Deepgram STT adapter. Calling, conversation, database, TTS, and alerting integration are still in progress or planned.
 
+See [local installation and testing](SETUP.md) for the Conda environment,
+llama.cpp CPU server, Deepgram speech setup, and available test commands.
+
 ## The experience
 
 1. At the person's chosen time, HearthVoice places an outbound call. They can also call in for a check-in.
