@@ -102,15 +102,42 @@ Run its automated tests without an API key or API usage:
 python -m unittest discover -s tests -p 'test_stt.py' -v
 ```
 
-There is no standalone recording/microphone command yet. Live STT integration
-must feed the client raw mono 8 kHz mu-law audio, including captured silence,
-while consuming speech-start and completed-transcript events concurrently.
-Do not send a WAV header or base64 text. The client groups audio into 80 ms
-frames internally. See the [STT handoff and usage example](builders/builder-1/STT.md).
+## Talk to the agent from your microphone (macOS)
 
-The next local voice-test milestone is microphone capture into Flux, completed
-transcripts into the llama.cpp agent, and the agent's spoken response into Aura.
-That combined loop is not wired yet.
+Keep the llama-server command from step 3 running. Install the audio tools once
+if `ffmpeg` or `ffplay` is missing:
+
+```bash
+conda install -c conda-forge ffmpeg
+```
+
+In a second terminal, activate your environment and run from the project root:
+
+```bash
+conda activate hearthvoice
+python -m scripts.voice_chat --name Julie
+```
+
+Allow microphone access for your terminal in macOS System Settings → Privacy &
+Security → Microphone. Speak, then pause to finish your turn. Audio goes to
+Deepgram Flux, the transcript goes to the local agent, and Aura streams its
+spoken reply to your speakers. This uses Deepgram credits. Press Ctrl+C to stop.
+The microphone is muted during replies to prevent speaker echo; interruption
+is not supported yet. Wait for “Listening…” before speaking again.
+
+If the default microphone fails, list devices and select an audio device index:
+
+```bash
+ffmpeg -f avfoundation -list_devices true -i ""
+python -m scripts.voice_chat --input-device 0 --name Julie
+```
+
+The device-list command exits with an error after printing the devices; that
+is expected. Use the audio-device index, not the video-device index.
+This command currently supports macOS. Live microphone permissions, provider
+credentials, and audio quality must be checked locally; automated tests mock
+these connections. Recent conversation history is limited to six exchanges,
+but long turns may still exceed the local model's configured context window.
 
 ## 6. Run all automated checks
 
