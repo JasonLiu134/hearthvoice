@@ -4,7 +4,7 @@
 
 HearthVoice is a screen-free daily wellness check-in for older adults. It calls a regular landline or mobile phone, has a short, patient conversation, and alerts a designated caregiver by SMS when a call is missed or a concern is reported. The person receiving the call needs no app, account, or smartphone.
 
-> **Project status:** The repository has a file scaffold, but its Python modules and tests are empty. The calling, conversation, database, and alerting integrations described below are planned, not yet implemented.
+> **Project status:** The repository has a file scaffold and a tested Deepgram STT adapter. Calling, conversation, database, TTS, and alerting integration are still in progress or planned.
 
 ## The experience
 
@@ -36,14 +36,14 @@ Senior's phone (landline or mobile)
 Twilio Voice or Vapi
               ↕ call events and audio
 FastAPI orchestration service
-  ├── Speech-to-text: Deepgram Nova-2
+  ├── Speech-to-text: Deepgram Flux (current demo path; Nova-2 in the original brief)
   ├── Dialogue and triage: Claude or OpenAI
   ├── Text-to-speech: ElevenLabs
   ├── Profiles, schedules, and logs: Supabase/PostgreSQL
   └── Caregiver alerts: Twilio SMS
 ```
 
-The gateway, language model, and backend choices are alternatives in the source specification; the team has not committed to one implementation. Keep triage output structured so the alerting service can act on it without parsing conversational prose.
+The current voice pipeline uses Twilio, FastAPI, Deepgram Flux, and ElevenLabs. Other providers in the source specification remain options, not active integrations. Keep triage output structured so the alerting service can act on it without parsing conversational prose.
 
 ### Triage contract
 
@@ -97,6 +97,7 @@ src/
       webhooks.py      # Provider events
   core/
     agent.py           # Conversation behavior
+    stt.py             # Deepgram streaming transcription adapter
   services/
     client.py          # Planned provider client
     database.py        # Profiles and call history
@@ -104,6 +105,7 @@ src/
     scheduler.py       # Daily check-ins
 tests/
   test_agent.py
+  test_stt.py
 ```
 
-These files exist as empty placeholders. Triage and audio pipeline modules can be added as implementation needs become clear. The first implementation milestone is an end-to-end demo call that produces a structured assessment and sends a test SMS; scheduling and historical comparisons can follow once that path works.
+Most files are currently empty placeholders; `src/core/stt.py` and `tests/test_stt.py` contain the STT adapter and its tests. See [the STT handoff](builders/builder-1/STT.md) for the call-handler integration boundary. The first end-to-end milestone is a demo call that produces a structured assessment and sends a test SMS; scheduling and historical comparisons can follow once that path works.

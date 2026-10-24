@@ -10,7 +10,7 @@ This is a work plan derived from the [project specification](../../README.md). I
 
 - Connect inbound and outbound phone calls using Twilio Voice or Vapi.
 - Stream call audio through speech recognition, dialogue, and speech synthesis.
-- Integrate the proposed Deepgram Nova-2 speech recognition and ElevenLabs speech synthesis services, subject to the team's provider decision.
+- Integrate Deepgram Flux speech recognition and the selected Pocket TTS speech synthesis engine. See [STT handoff](STT.md) and [Pocket TTS setup](TTS.md); the current call bridge still uses ElevenLabs until Pocket streaming is connected.
 - Support patient turn-taking and interruption handling.
 - Measure turn latency against the target of under 1.5 seconds; report actual results separately from the target.
 
