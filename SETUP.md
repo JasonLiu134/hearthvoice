@@ -62,9 +62,9 @@ In another activated terminal, the team's agent test command is:
 python src/core/test_agent.py
 ```
 
-`src/core/test_agent.py` is not present in this checkout yet. That command needs
-the agent teammate's implementation before it can run. The speech clients do
-not depend on that file and can be tested independently.
+The command starts a text conversation with the local agent. Use `/summary`
+to summarize the conversation and `/quit` to exit. The speech clients can be
+tested independently of the agent server.
 
 ## 4. Run text-to-speech
 
