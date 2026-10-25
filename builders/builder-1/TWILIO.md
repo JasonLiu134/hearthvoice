@@ -1,9 +1,11 @@
 # Twilio voice demo setup
 
 The phone integration is in `src/api/server.py` and `src/core/voice_pipeline.py`.
-It uses Twilio bidirectional Media Streams, Deepgram Flux for end-of-turn speech
-recognition, the local llama.cpp HearthAgent for dialogue, and Deepgram Aura-2
-for streamed speech. It does not yet send assessments or alerts.
+It has two modes. Trial mode uses Twilio Gather/Say and the local llama.cpp
+HearthAgent. Streaming mode uses Twilio bidirectional Media Streams, Deepgram
+Flux for end-of-turn recognition, local llama.cpp dialogue, and Deepgram Aura-2
+speech. The active post-call SMS summary goes to the caller; it is separate from
+the optional concern-alert service.
 
 ## Configure
 
@@ -59,11 +61,11 @@ produces a spoken fallback. This is a turn-based demo, with no streaming or
 barge-in. The full reply must be ready before Twilio receives the next TwiML.
 
 History and retry responses live in memory for up to ten minutes, with lazy
-expiry and a 100-call capacity. Run one API worker. A restart loses sessions;
-there is no persistent transcript storage or caregiver notification. Signed
-retries for the same turn reuse its response. Local tests mock the model;
-account-specific custom webhook support and audible phone behavior need a live
-inbound test. See [Twilio trial docs](https://www.twilio.com/docs/usage/trials/try-out-voice).
+expiry and a 100-call capacity. Run one API worker. A restart loses the active
+session, although completed-call transcript snapshots can be uploaded to
+Supabase when configured. Signed retries for the same turn reuse its response.
+This mode has no barge-in. Local tests mock the model and provider; they do not
+prove live phone behavior. See [Twilio trial docs](https://www.twilio.com/docs/usage/trials/try-out-voice).
 
 ### Streaming phone conversation
 
@@ -169,33 +171,33 @@ handoff instructions for that workflow.
   1.5-second target.
 
 Conversation history is held in memory for the call, and the model client is
-closed at hangup. Persistent transcripts, profile lookup, assessment delivery,
-and caregiver notifications are not connected to this phone session.
+closed at hangup. When enabled, Supabase stores the transcript, observed
+timestamps, and generated summary. Profile lookup, baseline comparison, and
+structured assessment delivery are not connected to this phone session.
 
-## Optional caregiver SMS alerts and Supabase call logs
+## Post-call caller SMS and Supabase call logs
 
-The phone bridge can assess each patient turn and send a generic caregiver SMS when
-the local agent classifies it as `concern` or `emergency`. Keep this disabled until
-the patient and caregiver numbers are configured:
+After a completed call, the server can send the generated patient-reported
+summary back to the participant's call number. It does not look up emergency
+contacts and it does not send to `CAREGIVER_PHONE_NUMBER`:
 
 ```dotenv
-SMS_ALERTS_ENABLED=true
-SMS_ALERT_PROVIDER=mock                 # use twilio only for a real message
-PATIENT_PHONE_NUMBER=+15551234567
-CAREGIVER_PHONE_NUMBER=+15557654321
-TWILIO_SMS_FROM_NUMBER=+15551234567     # optional; defaults to TWILIO_FROM_NUMBER
-PHONE_ALERTS_DATABASE=data/phone-alerts.sqlite3
+POST_CALL_SMS_ENABLED=true
+POST_CALL_SMS_PROVIDER=mock             # use twilio for a live attempt
+POST_CALL_SMS_DATABASE=data/post-call-sms.sqlite3
+SMS_ALERTS_ENABLED=false                # older caregiver-alert path
 ```
 
-`mock` persists the alert without contacting Twilio. `twilio` requires the normal
-Twilio account credentials and `PUBLIC_BASE_URL`; delivery callbacks update the
-stored status at `/webhooks/twilio/messages`. Inspect the persisted alerts with
-`GET /alerts` and the admin token. The alert is deduplicated for the active check-in
-and the SMS intentionally contains no symptoms or model-generated medical text.
+`mock` persists a simulated caller message without contacting Twilio. `twilio`
+requires the normal Twilio credentials, an SMS-capable `TWILIO_FROM_NUMBER` (or
+`TWILIO_SMS_FROM_NUMBER`), and `PUBLIC_BASE_URL`; delivery callbacks update the
+ledger at `/webhooks/twilio/call-summary`. Duplicate completion callbacks do not
+send a second message for the same call and caller.
 
-Twilio trial accounts may restrict custom SMS bodies and require verified recipients;
-the implementation remains testable with the mock provider, but a live caregiver
-message may require an upgraded account.
+Twilio trial accounts can send SMS only under their trial restrictions, including
+verified recipients and predefined content. A custom generated call summary was
+rejected in this account with error 572006, so the mock provider is the available
+local path until the account can send custom bodies.
 
 To persist complete call transcripts, configure the optional Supabase logger:
 

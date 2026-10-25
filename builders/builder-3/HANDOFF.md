@@ -1,115 +1,82 @@
-# Builder 3 handoff: orchestration and Twilio investigation
+# Builder 3 handoff: standalone orchestration boundary
 
 ## Current state
 
-Implemented a standalone FastAPI orchestration app, provider adapters, daily scheduling,
-temporary SQLite persistence, assessment ingestion, signed Twilio callbacks, deduplication,
-and scripted keypad testing. Builder 1's `src/api/server.py` is preserved; the standalone
-Builder 3 entry point is `src/api/builder3_server.py`.
+Builder 3 has a standalone FastAPI app in `src/api/builder3_server.py`. Its
+`Orchestrator` and SQLite store implement profiles, daily local-time scheduling,
+outbound call intent, retries, inbound profile matching, missed/incomplete-call
+states, structured assessment ingestion, caregiver alert claims, and message
+delivery callbacks.
 
-Verified locally: 50 automated tests pass, the offline demo persists high-risk and missed-call
-alerts, and the local/public HTTPS health endpoints were reachable during testing.
+This is a separate application path from the active phone server,
+`src/api/server.py`. The active server owns Twilio Voice, Deepgram Flux/Aura,
+the local llama.cpp agent, Supabase call snapshots, and caller-only post-call
+summary SMS. It does not create Builder 3 call IDs, submit structured
+assessments, or call `Orchestrator.call_event()` from its Twilio status route.
 
-Live calls have **not** succeeded and real caregiver SMS delivery is **not verified**.
-The account owner needs to finish the Twilio configuration/request investigation.
+## Contracts
 
-## Observed Twilio issue
+Builder 3 assessment ingestion accepts `NORMAL`, `LOW_RISK`, or `HIGH_RISK`, with
+optional `meds_taken` and `current_pain_level`. A high-risk assessment creates a
+caregiver alert; a second unanswered attempt creates a missed-check-in alert.
+The service validates submitted fields but does not infer this structured object
+from raw dialogue.
 
-- Read-only account authentication returned HTTP 200, account `active`, type `Trial`.
-- Sender lookup returned HTTP 200 with no matching `IncomingPhoneNumbers` record.
-  This does **not** establish that the trial sender or credentials are wrong.
-- Outbound create requests returned HTTP 400, provider code `0`, with no call SID.
-  The exact cause remains unknown; changing the recipient to the confirmed international
-  number did not resolve the rejection.
-- The diagnostic now reports `listed_in_account_phone_numbers` rather than claiming
-  that an empty lookup proves the number does not belong to the account.
+The active model summary has a different schema: `mood`, `severity` (`ok`,
+`watch`, `concern`, or `emergency`), `concerns`, and `summary`. It does not yet
+perform baseline lookup or deterministic pain-delta/medication rules. Preserve
+the two schemas as separate contracts until an explicit integration is made.
 
-Current [Twilio Voice trial documentation](https://www.twilio.com/docs/usage/trials/try-out-voice)
-describes trial-provided numbers, product/recipient-specific resources, and restricted
-request parameters. The adapter currently uses the standard Calls API with `From`,
-custom `Url`, `Timeout`, and callback options. Compatibility with this account's trial
-request format needs verification; it is a hypothesis, not a confirmed root cause.
-
-## Account owner's next steps
-
-1. Configure a private `.env` from `.env.example` using the intended account's credentials.
-   Do not share or commit credentials. Rotate any real token previously pasted in chat.
-2. In Twilio Console, open Communications > Voice > Overview > Try out Voice. Confirm
-   the verified recipient and the correct Voice trial sender. Compare the Console's
-   request example and response with `TwilioProvider.start_call`. Inspect Twilio logs
-   for the rejection description. Preserve secrets when sharing diagnostic output.
-3. Run the read-only check:
-
-   ```sh
-   .venv/bin/python scripts/check_twilio.py
-   ```
-
-4. Fix account-specific request/configuration issues before making another call. Confirm
-   Voice and SMS sender requirements separately; this implementation assumes one sender.
-
-## Reproduce the standalone test
+## Local verification
 
 ```sh
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements-dev.txt
-cp .env.example .env
+python3 scripts/demo_builder3.py
+python3 -m unittest discover -s tests -v
 ```
 
-Fill credentials and set these additional values locally:
-
-```dotenv
-PROVIDER=twilio
-SMOKE_TEST_ENABLED=true
-SCHEDULER_ENABLED=false
-DATABASE_PATH=data/live-test.sqlite3
-PUBLIC_BASE_URL=https://YOUR-CURRENT-TUNNEL-HOST
-API_TOKEN=YOUR-PRIVATE-RANDOM-BACKEND-TOKEN
-```
-
-`API_TOKEN` protects HearthVoice's API; it is distinct from `TWILIO_AUTH_TOKEN`.
-`VOICE_URL` is unnecessary when scripted test mode is enabled. `TWILIO_FROM_NUMBER`
-is the sender, not the personal test recipient. Use your own HTTPS tunnel; the prior
-developer's tunnel address is temporary and is not committed configuration.
+The offline demo uses fictional data and a mock provider. The API can be run
+with one worker:
 
 ```sh
-uvicorn src.api.builder3_server:create_app --factory --host 127.0.0.1 --port 8000 --env-file .env
+uvicorn src.api.builder3_server:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
 ```
 
-Keep the server and tunnel running. Health should report `provider: twilio` and
-`smoke_test_enabled: true`. In another terminal, with consenting real recipients:
+Set `SCHEDULER_ENABLED=true` to tick every 30 seconds, or call
+`POST /scheduler/tick`. Use a private `API_TOKEN`; it is distinct from the
+active server's `ADMIN_TOKEN` and Twilio credentials. The SQLite state is a
+single-process demo store.
 
-```sh
-.venv/bin/python scripts/start_test_call.py \
-  --to '+YOUR_VERIFIED_RECIPIENT' \
-  --caregiver '+YOUR_VERIFIED_CAREGIVER' \
-  --place-call
-```
+## Active phone path status
 
-This requests a real, potentially billable call. Press 1 to create an explicitly synthetic
-high-risk assessment and attempt a `TEST ONLY:` caregiver SMS; press 2 for a normal
-synthetic assessment without an SMS. Inspect authenticated `GET /history` and provider
-delivery callbacks; provider acceptance alone is not proof of delivery.
+The active phone path has completed inbound voice conversations and persists
+transcripts/summaries to Supabase when configured. Its current post-call SMS is
+sent to the call participant, not a caregiver, and does not query
+`emergency_contacts`. The older concern-only caregiver-alert path is separately
+gated by `SMS_ALERTS_ENABLED` and is disabled in the current environment.
 
-The script deduplicates check-ins by UTC date. After fixing a definitively rejected
-request with no provider call ID, explicitly add `--retry-rejected-call`. Unknown sends,
-accepted calls, or completed calls cannot be retried through that option. Historical
-rejections stay in local history. The script loads the repository's `.env` automatically;
-preexisting shell variables take precedence.
+The Twilio trial account rejected the custom summary SMS body with error
+`572006`; custom live summary delivery is therefore not verified. This is a
+trial restriction, not evidence that the active inbound phone conversation is
+unimplemented. The active trial Gather/Say mode is limited to four turns and
+has no barge-in; the Deepgram streaming mode supports interruption.
 
-## Offline verification and integration boundaries
+## Remaining integration work
 
-```sh
-.venv/bin/python -m unittest discover -s tests -v
-.venv/bin/python scripts/demo_builder3.py
-```
+- Pass a Builder 3 internal `call_id` into the active Twilio voice session.
+- Relay active call lifecycle events into `Orchestrator.call_event()`.
+- Convert the active model summary or a dedicated triage result into the Builder
+  3 assessment contract.
+- Decide whether product alerts go to a caregiver, the caller, or both, then
+  enable only that path.
+- Replace or reconcile the standalone SQLite state with shared Supabase
+  profiles, schedules, assessments, and alert records.
+- Measure full phone turn latency before claiming the README's under-1.5-second
+  target.
 
-- Builder 1: preserve internal `call_id` through the voice session and relay lifecycle events.
-- Builder 2: send `event_id`, `call_id`, and structured `triage` to `POST /events/assessments`.
-- Builder 4: replace the temporary `load()` / `save(state)` store with shared persistence.
-- Full API contracts, assumptions, and limits are in [README.md](README.md).
+## Safety and deployment limits
 
-Run a single process against the SQLite store. Automatic SMS retries and provider
-reconciliation remain pending; uncertain sends are recorded as `unknown` to avoid
-blind duplication. No credentials, personal phone numbers, transcripts, or local
-SQLite history are included in this handoff.
+Run one standalone Builder 3 process against SQLite. Provider timeouts are
+recorded as unknown rather than blindly retried. Live caregiver delivery and
+multi-worker reconciliation are not claimed. Use consenting test participants,
+keep webhook credentials private, and do not treat this service as emergency
+response or diagnosis.

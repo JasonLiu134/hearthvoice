@@ -20,7 +20,8 @@ The model setting is optional; `aura-2-thalia-en` is the default. Get a key from
 
 ## Persistent streaming client
 
-`src/core/tts.py` provides `AuraTTSClient`, independent of Twilio and Ollama.
+`src/core/tts.py` provides `AuraTTSClient`, independent of Twilio and the local
+llama.cpp dialogue server.
 Open one connection per call and run one event consumer concurrently with text
 generation:
 
@@ -58,7 +59,7 @@ This example handles one reply; keep the context and event consumer alive across
 turns in the eventual coordinator. Pass the selected `AuraOptions` explicitly
 when configuring a different voice; the client itself does not read `.env`.
 
-- `send_text(text)` sends a `Speak` message. Buffer Ollama tokens into meaningful
+- `send_text(text)` sends a `Speak` message. Buffer llama.cpp tokens into meaningful
   phrases; supply speech text only, not raw JSON or reasoning.
 - `events()` yields binary audio immediately, plus `flushed`, `cleared`, and
   `warning` events. Only one consumer is allowed. Connection, JSON, and provider
@@ -68,7 +69,7 @@ when configuring a different voice; the client itself does not read `.env`.
 - `clear()` sends `Clear` and immediately mutes subsequently received audio
   until a `cleared` event. Do not send new text until that acknowledgement is
   consumed; bound the wait with a timeout in the coordinator. Also cancel stale
-  Ollama output and clear downstream playback separately. Audio already handed
+  llama.cpp output and clear downstream playback separately. Audio already handed
   to the transport cannot be recalled by this module.
 - Context exit closes the socket; cancellation propagates. Keep send/receive
   tasks scoped to that context and cancel them before leaving it.
@@ -101,9 +102,11 @@ The unit tests are in `tests/test_tts.py` and mock all provider traffic:
 python -m unittest discover -s tests -p 'test_tts.py' -v
 ```
 
-The agent module remains a placeholder. The next integration is Ollama streamed
-text into `send_text()` and a local audio player; microphone input can then use
-`FluxSTTClient`. Neither is wired by this TTS-only change.
+The reusable TTS client is independently tested. The live phone bridge already
+uses Aura-2 through the HTTP streaming endpoint in `voice_pipeline.py`; the
+local microphone CLI uses the persistent Aura client with llama.cpp output.
+Those are separate transports and should not be treated as one shared audio
+session.
 
 ## Existing call bridge
 
@@ -115,7 +118,10 @@ text into `send_text()` and a local audio player; microphone input can then use
 
 The response is raw mono 8 kHz mu-law audio without a file header. The bridge forwards audio chunks as base64 Twilio `media` messages without transcoding. It checks HTTP status before forwarding audio. Caller speech cancels the synthesis stream and sends Twilio `clear` to discard buffered playback.
 
-Only the spoken reply should be synthesized. Structured triage belongs to the dialogue service and must remain separate. The current dialogue is a temporary scripted demo, not integrated triage.
+Only the spoken reply should be synthesized. Structured triage belongs to the
+dialogue service and remains separate. The current live agent streams plain
+spoken text; the README's structured triage JSON contract is not yet wired into
+this phone path.
 
 ## Validation and latency
 

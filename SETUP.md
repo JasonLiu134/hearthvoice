@@ -1,8 +1,20 @@
 # Local installation and testing
 
 Run commands from the project root. The agent uses a local llama.cpp server;
-speech recognition and synthesis use hosted Deepgram APIs and require internet
-access. Twilio is not needed for the standalone speech checks.
+the local microphone CLI and standalone speech checks use hosted Deepgram APIs
+and require internet access. Twilio is not needed for those local checks. Phone
+trial mode instead uses Twilio Gather/Say; phone streaming mode uses Deepgram.
+
+| Run mode | Speech services | Important limits |
+| --- | --- | --- |
+| Text CLI | No STT/TTS | Requires local llama-server. |
+| macOS microphone CLI | Deepgram Flux/Aura | Input is muted during replies; 750 ms leading playback padding; no barge-in. |
+| Phone trial mode | Twilio Gather/Say | Four turns including silence; complete text reply before speech; no barge-in. |
+| Phone streaming mode | Deepgram Flux/Aura through Twilio | Streaming interruption handling is implemented; account support and live audio need validation. |
+
+The original daily scheduler and missed-call caregiver alerts are in a separate
+Builder 3 app, not integrated with the main phone backend. See its
+[handoff](builders/builder-3/HANDOFF.md).
 
 ## 1. Create the Python environment
 
@@ -159,9 +171,41 @@ python -m unittest discover -s tests -v
 python -m pip check
 ```
 
-The speech unit tests mock provider connections. They verify protocol behavior,
-audio handling, interruption, and cleanup, rather than live recognition quality
-or latency. The llama.cpp server is not needed for these tests.
+Automated tests mock external model, speech, Twilio, and Supabase boundaries.
+They verify protocol handling, webhooks, orchestration state, upload shape,
+SMS deduplication/status, interruption, and cleanup. Tests named end-to-end are
+in-process integration tests with mocked external providers. They do not prove
+live delivery, medical assessment accuracy, recognition quality, or the latency
+target. Neither provider credentials nor a running llama.cpp server are needed
+for these automated tests.
 
 For phone integration, follow [Twilio setup](builders/builder-1/TWILIO.md).
 For automatic conversation storage, follow [Supabase setup](builders/builder-4/SUPABASE.md).
+
+
+## Main phone backend and post-call messages
+
+Follow [Twilio setup](builders/builder-1/TWILIO.md) for the sender, public tunnel,
+and signed callbacks. The local llama-server must also be running. Start the
+main API from the project root in its activated environment:
+
+```bash
+python -m uvicorn src.api.server:app --host 127.0.0.1 --port 8000 --env-file .env
+```
+
+Run a single backend process. Update `PUBLIC_BASE_URL`, configure the number with
+`python -m scripts.configure_phone`, and restart the API whenever the tunnel URL
+changes. This command configures both the voice webhook and completion callback.
+Restart after changing `.env`; an existing process does not automatically reload it.
+
+The current SMS recipient is the phone conversation participant, not a caregiver
+or an emergency-contact query. `POST_CALL_SMS_ENABLED=true` enables the summary
+attempt after a completed conversation; `POST_CALL_SMS_PROVIDER=mock` records an
+attempt without sending, while `twilio` uses the real provider. Keep the earlier
+caregiver feature disabled with `SMS_ALERTS_ENABLED=false` for this flow.
+
+Supabase logging is separately opt-in and uses one configured patient/profile
+mapping. See [logging and SMS setup](builders/builder-4/SUPABASE.md) for settings,
+snapshot recovery, and delivery status. The latest live custom SMS was rejected
+with Twilio `572006`; successful delivery is not established. A successful call
+or a passing mock test does not establish that SMS is enabled for the account.

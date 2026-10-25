@@ -48,8 +48,9 @@ async def transcribe(audio_chunks, on_turn):
 ```
 
 Run sending and event consumption concurrently. Keep `on_turn` fast: signal
-interruption or schedule an agent response rather than awaiting the entire
-Ollama/TTS response inside the receive loop. Only one task may consume `events()`.
+interruption or schedule the llama.cpp/Aura response rather than awaiting the
+entire model/TTS response inside the receive loop. Only one task may consume
+`events()`.
 
 - `send_audio(bytes)` applies backpressure through awaited sends; callers should
   provide small live chunks rather than entire recordings. Do not send WAV
@@ -65,14 +66,15 @@ Ollama/TTS response inside the receive loop. Only one task may consume `events()
   unsent partial frame; provider errors, malformed messages, and abnormal socket
   failures also propagate. There is no automatic retry or audio replay.
 
-The existing `voice_pipeline.py` still owns its original connection and helper
-calls. This addition does not change the teammate-owned call bridge; its owner
-can adopt the client through the interface above. Ollama and TTS are not called
-by this module.
+The active `voice_pipeline.py` owns a separate live bridge that uses the same
+Flux protocol and sends recognized turns to the local llama.cpp agent. The
+reusable client remains transport-focused: it does not call llama.cpp or TTS.
 
 Tests use mocked connections to cover concurrent sending/receiving, batching,
 normal input completion, provider and transport errors, and cancellation cleanup.
 No credentialed transcription or end-to-end latency is claimed by these tests.
+The streaming bridge logs `end_of_turn_to_first_audio_ms`, but the full
+under-1.5-second phone target remains unmeasured.
 
 Protocol references: [Flux v2 API](https://developers.deepgram.com/reference/speech-to-text/listen-flux)
 and [Flux quickstart](https://developers.deepgram.com/docs/flux/quickstart).
