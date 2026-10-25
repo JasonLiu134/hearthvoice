@@ -164,3 +164,4 @@ audio handling, interruption, and cleanup, rather than live recognition quality
 or latency. The llama.cpp server is not needed for these tests.
 
 For phone integration, follow [Twilio setup](builders/builder-1/TWILIO.md).
+For automatic conversation storage, follow [Supabase setup](builders/builder-4/SUPABASE.md).

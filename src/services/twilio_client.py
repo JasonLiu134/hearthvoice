@@ -34,7 +34,7 @@ class MockProvider:
         self.calls.append({"id": sid, "phone": phone, "call_id": call_id})
         return sid
 
-    def send_sms(self, phone, body, alert_id):
+    def send_sms(self, phone, body, alert_id, *, status_callback=None):
         sid = "mock_sms_" + uuid4().hex
         self.messages.append({"id": sid, "phone": phone, "body": body, "alert_id": alert_id})
         return sid
@@ -72,8 +72,8 @@ class TwilioProvider:
             status_callback_event=["initiated", "ringing", "answered", "completed"],
         )
 
-    def send_sms(self, phone, body, alert_id):
+    def send_sms(self, phone, body, alert_id, *, status_callback=None):
         return self._create(
             self.client.messages.create, to=phone, from_=self.from_number, body=body,
-            status_callback=with_query(self.base_url + "/webhooks/twilio/messages", alert_id=alert_id),
+            status_callback=status_callback or with_query(self.base_url + "/webhooks/twilio/messages", alert_id=alert_id),
         )

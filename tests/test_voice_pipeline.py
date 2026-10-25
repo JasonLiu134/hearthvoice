@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 
-from src.core.voice_pipeline import CallSession, SpeechConfig, reply_to
+from src.core.voice_pipeline import CallSession, SpeechConfig
 
 
 class FakeTwilio:
@@ -124,9 +124,48 @@ class VoicePipelineTests(unittest.IsolatedAsyncioTestCase):
                 await session.speak(client, "Hello")
         self.assertEqual(twilio.sent, [])
 
-    def test_short_scripted_replies(self):
-        self.assertIn("eaten", reply_to("fine", 0))
-        self.assertIn("medication", reply_to("yes", 1))
+    async def test_agent_receives_transcript_and_streams_phrases_without_end_marker(self):
+        session = CallSession(FakeTwilio(), CONFIG)
+        async def reply(history, user):
+            self.assertEqual(history[-1]["content"], "I am gardening")
+            yield "How is your garden? "
+            yield "Tell me more.[EN"
+            yield "D]"
+        session.agent.reply_stream = reply
+        with patch.object(session, "speak", new_callable=AsyncMock) as speak:
+            await session.respond(None, "I am gardening")
+        self.assertEqual([c.args[1] for c in speak.call_args_list],
+                         ["How is your garden?", "Tell me more."])
+        self.assertEqual(session.history[-1]["role"], "assistant")
+
+    async def test_agent_failure_speaks_fallback(self):
+        session = CallSession(FakeTwilio(), CONFIG)
+        async def reply(history, user):
+            raise ConnectionError("model unavailable")
+            yield
+        session.agent.reply_stream = reply
+        with patch.object(session, "speak", new_callable=AsyncMock) as speak:
+            await session.respond(None, "Hello")
+        self.assertIn("trouble responding", speak.call_args.args[1])
+
+    async def test_barge_in_cancels_active_model_and_closes_generator(self):
+        session = CallSession(FakeTwilio(), CONFIG)
+        session.stream_sid = "MZ1"
+        started, closed = asyncio.Event(), asyncio.Event()
+        async def reply(history, user):
+            try:
+                started.set()
+                await asyncio.Event().wait()
+                yield "Unreachable"
+            finally:
+                closed.set()
+        session.agent.reply_stream = reply
+        session.speech_task = asyncio.create_task(session.respond(None, "Hello"))
+        await started.wait()
+        await session.interrupt()
+        self.assertTrue(closed.is_set())
+        self.assertTrue(session.speech_task.cancelled())
+        self.assertEqual(session.twilio.sent[-1]["event"], "clear")
 
 
 if __name__ == "__main__":

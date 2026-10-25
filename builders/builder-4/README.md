@@ -4,7 +4,7 @@
 
 Provide persisted call history and a rehearsed end-to-end demonstration using fictional profile data and consenting participants.
 
-This is a work plan derived from the [project specification](../../README.md). The database, demo fixtures, and application integrations are not implemented yet. Supabase/PostgreSQL is the proposed persistence layer.
+This is a work plan derived from the [project specification](../../README.md). Automatic Supabase phone conversation logging is implemented; see [setup and behavior](SUPABASE.md). Profile lookup, demo fixtures, and broader orchestration persistence remain planned.
 
 ## Responsibilities
 

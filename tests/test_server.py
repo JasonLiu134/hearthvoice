@@ -17,6 +17,7 @@ class ServerTests(unittest.TestCase):
             "PUBLIC_BASE_URL": BASE,
             "TWILIO_AUTH_TOKEN": "test-auth-token",
             "ADMIN_TOKEN": "admin-secret",
+            "TWILIO_VOICE_MODE": "stream",
         })
         self.env.start()
         self.client = TestClient(app)
@@ -42,6 +43,28 @@ class ServerTests(unittest.TestCase):
     def test_outbound_endpoint_requires_admin_token(self):
         response = self.client.post("/calls", json={"to": "+15551234567"})
         self.assertEqual(response.status_code, 403)
+
+    def test_voice_webhook_rejects_tampered_call_id(self):
+        params = {"CallSid": "CA1"}
+        signature = RequestValidator("test-auth-token").compute_signature(
+            BASE + "/twilio/voice?call_id=original", params
+        )
+        response = self.client.post("/twilio/voice?call_id=changed", data=params,
+                                    headers={"X-Twilio-Signature": signature})
+        self.assertEqual(response.status_code, 403)
+
+    def test_signed_call_status_callback_accepted_unsigned_rejected(self):
+        params = {"CallSid": "CAtest", "CallStatus": "in-progress"}
+        signature = RequestValidator("test-auth-token").compute_signature(BASE + "/twilio/status", params)
+        with self.assertLogs("src.api.server", level="INFO") as logs:
+            response = self.client.post("/twilio/status", data=params,
+                                        headers={"X-Twilio-Signature": signature})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("in-progress", " ".join(logs.output))
+        self.assertEqual(self.client.post("/twilio/status", data=params).status_code, 403)
+
+    def test_status_requires_admin_auth(self):
+        self.assertEqual(self.client.get("/calls/CA" + "0" * 32).status_code, 403)
 
     def test_outbound_call_uses_api_key_and_public_webhook(self):
         sent = {}
@@ -71,7 +94,7 @@ class ServerTests(unittest.TestCase):
         }), patch("src.api.server.httpx.AsyncClient", return_value=FakeHTTPClient()):
             response = self.client.post("/calls", json={"to": "+15551234567"},
                                         headers={"X-Admin-Token": "admin-secret"})
-        self.assertEqual(response.json(), {"call_sid": "CA123"})
+        self.assertEqual(response.json(), {"call_sid": "CA123", "status": "queued"})
         self.assertEqual(sent["auth"], ("SK123", "key-secret"))
         self.assertEqual(sent["data"]["Url"], BASE + "/twilio/voice")
 

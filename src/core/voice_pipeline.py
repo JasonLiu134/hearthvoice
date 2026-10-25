@@ -3,12 +3,16 @@
 import asyncio
 import base64
 import logging
+import re
 import time
+from contextlib import aclosing
 from dataclasses import dataclass
 
 import httpx
 import websockets
 from fastapi import WebSocket, WebSocketDisconnect
+from src.core.agent import END_MARKER, HearthAgent
+from src.services import phone_alerts, database
 
 from src.core.stt import (
     FluxAudioBuffer,
@@ -19,6 +23,7 @@ from src.core.stt import (
 )
 
 log = logging.getLogger(__name__)
+active_sessions = {}
 
 
 @dataclass(frozen=True)
@@ -32,17 +37,6 @@ class SpeechConfig:
         return FluxOptions(model=self.flux_model).url
 
 
-def reply_to(transcript: str, turn: int) -> str:
-    """Temporary, bounded demo dialogue; triage belongs to the agent service."""
-    if turn == 0:
-        return "Thank you for sharing. Have you eaten today?"
-    if turn == 1:
-        return "Thank you. Have you taken your medication today?"
-    if turn == 2:
-        return "Thank you. Are you having any pain today?"
-    return "Thank you for checking in. Is there anything else you would like to tell me?"
-
-
 class CallSession:
     def __init__(self, twilio: WebSocket, config: SpeechConfig) -> None:
         self.twilio = twilio
@@ -52,6 +46,14 @@ class CallSession:
         self.speech_task: asyncio.Task[None] | None = None
         self.send_lock = asyncio.Lock()
         self.last_eot_at: float | None = None
+        self.agent = HearthAgent()
+        self.history: list[dict] = []
+        self.transcript: list[dict] = []
+        self.user = {}  # No profile lookup is wired to the phone session yet.
+        self.caller = ""
+        self.call_sid = ""
+        self.alert_tasks = set()
+        self.finished = asyncio.Event()
 
     async def send_twilio(self, message: dict) -> None:
         async with self.send_lock:
@@ -68,6 +70,52 @@ class CallSession:
     def start_speech(self, client: httpx.AsyncClient, text: str) -> None:
         self.speech_task = asyncio.create_task(self.speak(client, text))
         self.speech_task.add_done_callback(self._speech_done)
+
+    async def respond(self, client: httpx.AsyncClient, transcript: str) -> None:
+        self.history.append({"role": "user", "content": transcript})
+        self.transcript.append({"role": "user", "content": transcript})
+        del self.history[:-11]
+        if phone_alerts.enabled() and self.call_sid:
+            task = asyncio.create_task(phone_alerts.assess_call(
+                self.call_sid, self.caller, self.turn, [dict(item) for item in self.history]))
+            self.alert_tasks.add(task)
+            task.add_done_callback(self.alert_tasks.discard)
+        spoken = []
+        try:
+            async with asyncio.timeout(45):
+                pending = ""
+                async with aclosing(self.agent.reply_stream(self.history, self.user)) as stream:
+                    async for chunk in stream:
+                        pending += chunk
+                        while match := re.search(r"[.!?](?:\s|$)", pending):
+                            phrase, pending = pending[:match.end()], pending[match.end():]
+                            phrase = phrase.replace(END_MARKER, "").strip()
+                            if phrase:
+                                await self.speak(client, phrase)
+                                spoken.append(phrase)
+                    tail = pending.replace(END_MARKER, "").strip()
+                    if tail:
+                        await self.speak(client, tail)
+                        spoken.append(tail)
+                if not spoken:
+                    raise RuntimeError("Agent returned no spoken text")
+                log.info("Phone agent reply completed")
+        except asyncio.CancelledError:
+            log.info("Phone agent reply interrupted")
+            raise
+        except Exception as exc:
+            log.error("Phone agent reply failed: %s", type(exc).__name__)
+            fallback = "I'm having trouble responding right now. Please try again in a moment."
+            await self.speak(client, fallback)
+            spoken.append(fallback)
+        finally:
+            # Only record phrases actually submitted to Twilio, excluding pending tokens.
+            if spoken:
+                self.history.append({"role": "assistant", "content": " ".join(spoken)})
+                self.transcript.append(dict(self.history[-1]))
+            task = asyncio.create_task(database.save_call(self.call_sid, self.caller, list(self.transcript)))
+            self.alert_tasks.add(task)
+            task.add_done_callback(self.alert_tasks.discard)
 
     @staticmethod
     def _speech_done(task: asyncio.Task[None]) -> None:
@@ -112,7 +160,17 @@ class CallSession:
                 kind = event.get("event")
                 if kind == "start":
                     self.stream_sid = validate_twilio_start(event)
-                    self.start_speech(client, "Hello, this is HearthVoice. How are you feeling today?")
+                    self.call_sid = event["start"].get("callSid", "")
+                    if self.call_sid:
+                        active_sessions[self.call_sid] = self
+                    self.caller = (event["start"].get("customParameters") or {}).get("caller", "")
+                    greeting = self.agent.opening_line(self.user)
+                    self.transcript.append({"role": "assistant", "content": greeting})
+                    self.start_speech(client, greeting)
+                    task = asyncio.create_task(database.save_call(
+                        self.call_sid, self.caller, list(self.transcript)))
+                    self.alert_tasks.add(task)
+                    task.add_done_callback(self.alert_tasks.discard)
                 elif kind == "media":
                     if not self.stream_sid:
                         continue
@@ -136,11 +194,24 @@ class CallSession:
             elif event.kind == "end":
                 self.last_eot_at = time.monotonic()
                 await self.interrupt()
-                response = reply_to(event.transcript, self.turn)
                 self.turn += 1
-                self.start_speech(client, response)
+                self.speech_task = asyncio.create_task(self.respond(client, event.transcript))
+                self.speech_task.add_done_callback(self._speech_done)
 
     async def run(self) -> None:
+        try:
+            await self._run_connections()
+        finally:
+            try:
+                if self.alert_tasks:
+                    await asyncio.gather(*self.alert_tasks, return_exceptions=True)
+                await database.save_call(self.call_sid, self.caller, list(self.transcript))
+                await self.agent.close()
+            finally:
+                active_sessions.pop(self.call_sid, None)
+                self.finished.set()
+
+    async def _run_connections(self) -> None:
         async with httpx.AsyncClient(timeout=httpx.Timeout(20, connect=5)) as client:
             async with websockets.connect(
                 self.config.deepgram_url,

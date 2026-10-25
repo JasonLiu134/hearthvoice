@@ -15,3 +15,6 @@ twilio>=9,<10
 
 # OpenAI-compatible client for local llama-server
 openai>=1,<4
+
+# Backend Supabase call history
+supabase>=2,<3
