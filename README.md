@@ -2,8 +2,7 @@
 
 **Track 2: No App** · Hackathon project specification
 
-Demo Video: [Drive Link]([https://drive.google.com/file/d/1f2aydWfgqa0GFI1qbqNkLZlYLlxJ1iSm/view?usp=drive_link])
-
+Demo Video: [Drive Link](https://drive.google.com/file/d/1f2aydWfgqa0GFI1qbqNkLZlYLlxJ1iSm/view?usp=drive_link)
 HearthVoice is a screen-free daily wellness check-in for older adults. It calls a regular landline or mobile phone, has a short, patient conversation, and alerts a designated caregiver by SMS when a call is missed or a concern is reported. The person receiving the call needs no app, account, or smartphone.
 
 > **Project status:** The repository has a file scaffold and a tested Deepgram STT adapter. Calling, conversation, database, TTS, and alerting integration are still in progress or planned.
